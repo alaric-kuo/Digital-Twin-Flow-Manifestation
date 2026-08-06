@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite it as below."
+title: "Digital Twin Flow Manifestation: Cooling-System Risk Failure and Decision Response Time-Dynamics PoC"
+type: software
+authors:
+  - family-names: "Kuo"
+    given-names: "Han-Jung (Alaric)"
+version: "1.0.0"
+date-released: "2026-08-06"
+repository-code: "https://github.com/alaric-kuo/Digital-Twin-Flow-Manifestation"
+url: "https://github.com/alaric-kuo/Digital-Twin-Flow-Manifestation"
