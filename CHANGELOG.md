@@ -1,5 +1,14 @@
 # Changelog
 
+## README V4 — 2026-08-06
+
+- 全面移除GitHub表格中的inline LaTeX，避免科學符號以原始字串顯示。
+- 統一數學符號、Qiskit類別與Python識別字的表示規則。
+- 修正第三章的qᵢ、pᵢ與θᵢ符號系統。
+- 將線路圖圖例中的下標改為Unicode顯示，避免底線裸露。
+- 重寫六階段表格，將複雜公式移至GitHub可穩定渲染的math區塊。
+- 統一Pure NumPy與Qiskit實作表格的欄位語法與資訊粒度。
+
 ## README V3 — 2026-08-06
 
 - 統一第三章的$p_i$、$q_i$與$\theta_i$符號。
