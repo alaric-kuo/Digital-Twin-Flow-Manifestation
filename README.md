@@ -5,7 +5,7 @@
 **理論提出者與作者：** Dr. Han-Jung (Alaric) Kuo（郭瀚嶸 博士）  
 **所屬機構：** A&J Management Consulting Limited Company（瀚菱管理顧問有限公司）  
 **實作狀態：** 可重現方法論概念驗證（Reproducible Methodological POC）  
-**文件版本：** README V2，2026-08-06
+**文件版本：** README V3，2026-08-06
 
 > **Digital Twin = Digital Topology Manifesting Twin Information Flow**
 
@@ -180,7 +180,7 @@ Digital Twin Flow Manifestation
 | `q6` | `authorization_ready` | 授權已形成 | 治理與權限節點 |
 | `q7` | `intervention_executed` | 實體介入已執行 | 系統改變節點 |
 
-每一個量子位元的 `P(q_i=1)` 表示該語意狀態在目前模型中的顯化機率。這些值是模型狀態權重，並非由歷史事故頻率估計而來。
+每一個量子位元的 $P(q_i=1)$，表示第 $i$ 個語意狀態在目前模型中的顯化機率。這些值是模型狀態權重，並非由歷史事故頻率直接估計而來。
 
 ## 3.2 初始機率編碼
 
@@ -270,76 +270,204 @@ Physical Risk與Decision Response是主圖使用的兩條曲線。Uncontained Ri
 
 ![Qiskit representative circuit](outputs/dtfm_qiskit_circuit_explainer.png)
 
-它呈現的是**單一分鐘更新的代表性運算結構**。實際模擬會將此更新重複121次，並依目前分鐘與情境條件，決定哪些響應閘開始作用。
+這張圖呈現的不是一條只執行一次的靜態電路，也沒有把0至120分鐘的121次更新全部橫向展開。它抽取的是**每一分鐘都會重複執行的代表性更新單元**：
 
-## 5.1 六個運算階段
+```text
+目前密度矩陣
+→ 注入本分鐘外部擾動
+→ 推進Risk Failure Flow
+→ 依時間門檻推進Decision Response Flow
+→ 依目前介入機率施加耗散
+→ 計算exact與sampled觀測量
+→ 進入下一分鐘
+```
 
-| 階段 | 數值實作 | 語意解讀 | 時間條件 |
+因此，圖中的橫向順序表示**單一時間步內的運算順序**；真正的物理時間則由程式外層的分鐘迴圈推進。
+
+## 5.1 先讀懂線路圖上的每一種符號
+
+| 圖上符號 | 程式實作 | 數值作用 | 閱讀方式 |
 |---|---|---|---|
-| 1. Initial probability encoding | 八個`RYGate(θi)` | 將八個語意狀態的初始機率放入共同狀態空間 | 模擬開始時 |
-| 2. External disturbances | `q0`與`q1`的局部`RYGate` | 熱負載與冷卻劣化作為外部張力持續推動狀態 | 依擾動函數每分鐘更新 |
-| 3. Risk Failure Flow | 五組`CRYGate` | 風險沿備援、電力與製程關係向下傳播 | 每分鐘作用 |
-| 4. Decision Response Flow | 五組`CRYGate` | 證據經理解、授權與介入形成響應鏈 | 依Detection、Authorization與Intervention門檻啟動 |
-| 5. Mitigation / Dissipation | 作用於`q2`與`q4`的Kraus振幅耗散 | 實體介入形成後，備援壓力與製程熱風險逐步耗散 | 耗散強度隨`P(q7=1)`增加 |
-| 6. Measurement | `DensityMatrix`精確觀測與`sample_counts`有限shots | 形成CSV與圖表中的exact及sampled觀測量 | 每分鐘輸出 |
+| 水平黑線 `q0–q7` | 八個量子位元在同一個`DensityMatrix`中的索引 | 保存八個語意狀態的聯合機率振幅與相干項 | 每一條線代表一個語意狀態維度，不是實體電線、感測點或獨立時間序列 |
+| 藍色 `Ry(θ_i)` 方框 | `RYGate(θ_i)` | 將第 $i$ 個初始機率 $p_i$ 編碼為 $P(q_i=1)=p_i$ | 八個方框只在模擬初始化時作用；此時各量子位元先形成乘積狀態 |
+| 青色 `Ry(φ_L(t))`、`Ry(φ_D(t))` | 作用於`q0`、`q1`的局部`RYGate` | 依本分鐘熱負載與冷卻劣化函數改變局部狀態振幅 | 這是外部擾動注入，不需要其他量子位元先顯化 |
+| 綠色實心控制點、垂直線與目標`Ry`方框 | Risk Failure Flow的`CRYGate` | 只在控制量子位元為1的分支上旋轉目標量子位元，改變兩者聯合分布 | 綠色表示物理／功能風險關係；控制點在來源節點，`Ry`方框在受作用節點 |
+| 橘色實心控制點、垂直線與目標`Ry`方框 | Decision Response Flow的`CRYGate` | 將異常證據依序推進至理解、授權與實體介入 | 橘色表示資訊與治理響應；部分閘只有跨過Detection、Authorization或Intervention門檻後才啟動 |
+| 紫色 `AD Γ_2(t)`、`AD Γ_4(t)` 方框 | `Kraus`振幅耗散通道 | 將`q2`或`q4`的狀態1機率向狀態0耗散 | 它表示介入後的緩解效果；不是再增加一條風險或響應節點 |
+| 灰色 `M` 方框 | `DensityMatrix`機率讀取與`sample_counts` | 由目前狀態取得exact機率及有限shots觀測頻率 | `M`只負責觀測；sampled結果不覆寫下一分鐘使用的DensityMatrix |
+| 右側 `c0–c7` | classical bit標示 | 表示Z基底量測結果的古典輸出位置 | 本POC以完整counts計算邊際與聯合機率，不以單次bitstring作結論 |
+| 右側Observed quantities方框 | 邊際機率與聯合機率函式 | 計算Physical Risk、Decision Response、Uncontained Risk與Contained / Avoided | 這四項才是時間響應圖與CSV中主要被解讀的觀測量 |
+| 階段上方淡色區塊 `1–6` | 程式中的運算分段 | 標示一分鐘更新內的處理順序 | 區塊寬度是為了排版與可讀性，不代表實際經過時間或計算成本 |
 
-## 5.2 `CRYGate`在本POC中的角色
+圖中的希臘字母也不是裝飾。其角色如下：
 
-受控旋轉表示一個條件式作用：
+| 參數 | 所在位置 | 意義 |
+|---|---|---|
+| $\theta_i$ | 初始`RYGate` | 由第 $i$ 個初始機率 $p_i$ 轉換而來的編碼角 |
+| $\phi_L(t)$ | `q0`局部旋轉 | 第 $t$ 分鐘熱負載輸入所形成的旋轉角 |
+| $\phi_D(t)$ | `q1`局部旋轉 | 第 $t$ 分鐘冷卻劣化輸入所形成的旋轉角 |
+| $\alpha_{ij}$ | 綠色`CRYGate` | Risk Failure Flow中由$q_i$作用至$q_j$的每分鐘耦合角 |
+| $\beta_{ij}$、$\gamma_{ij}$ | 橘色`CRYGate` | Decision Response Flow中告警理解、授權與介入的耦合角 |
+| $\Gamma_2(t)$、$\Gamma_4(t)$ | 紫色振幅耗散 | 依目前介入機率計算的狀態相依耗散強度 |
+
+## 5.2 六個運算階段逐項拆解
+
+| 階段 | 進入此階段的資料 | Qiskit運算 | 數學上改變了什麼 | 語意上產生什麼 | 啟動條件 |
+|---|---|---|---|---|---|
+| 1. Initial probability encoding | 八個初始機率$p_0,\ldots,p_7$與初始狀態$\lvert 0\rangle^{\otimes 8}$ | 對每個$q_i$套用`RYGate(θ_i)`，其中$\theta_i=2\arcsin\sqrt{p_i}$ | 建立$\lvert\psi_0\rangle=\bigotimes_i R_y(\theta_i)\lvert0\rangle$，再形成$\rho_0=\lvert\psi_0\rangle\langle\psi_0\rvert$；每個邊際滿足$P(q_i=1)=p_i$ | 八個語意判斷被放入同一個可共同演化的密度矩陣；此時只是共同表示，尚未由受控閘形成跨狀態作用 | 僅在模擬開始時執行一次 |
+| 2. External disturbances | 本分鐘熱負載函數$L(t)$與冷卻劣化函數$D(t)$ | 對`q0`套用`RYGate(0.030L(t)\Delta t)`；對`q1`套用`RYGate(0.026D(t)\Delta t)` | 直接改變`q0`與`q1`的局部振幅，使其狀態1機率與其他量子位元的聯合分布隨時間移動 | 將場域外部的熱負載上升與主冷卻能力劣化注入模型 | 每分鐘依擾動函數更新 |
+| 3. Risk Failure Flow | 已受外部擾動更新的$\rho(t)$ | 依序套用五個綠色`CRYGate`：`q0→q2`、`q1→q2`、`q2→q3`、`q2→q4`、`q3→q4` | 每個閘只旋轉控制位元為1分支中的目標位元；五個閘依程式順序連續更新同一個DensityMatrix | 熱負載與冷卻劣化先推動備援壓力，再經電力限制與直接路徑推動製程熱風險 | 每分鐘作用 |
+| 4. Decision Response Flow | 異常、備援壓力及電力限制所形成的證據狀態 | Detection後套用`q1/q2/q3→q5`；Authorization後套用`q5→q6`；Intervention後套用`q6→q7`的橘色`CRYGate` | 依時間門檻開啟不同條件式旋轉，使證據狀態逐步改變理解、授權與介入的聯合分布 | 將「系統已有異常」推進成「有人理解」「權限成立」「物理行動已執行」 | 各閘分別依Detection、Authorization與Intervention門檻啟動 |
+| 5. Mitigation / Dissipation | 本分鐘受控旋轉後的介入邊際機率$P(q_7=1)$ | 建立兩個`Kraus`振幅耗散通道，分別作用於`q2`與`q4` | 以$\Gamma_2(t)=g_mP(q_7=1)$及$\Gamma_4(t)=1.40g_mP(q_7=1)$，將狀態1人口向狀態0轉移並維持trace | 實體介入越可能形成，備援壓力與製程熱風險的耗散越強 | 每分鐘計算；介入機率很低時耗散也很弱 |
+| 6. Measurement / Observation | 完成本分鐘所有閘與耗散後的DensityMatrix | 由矩陣對角線計算exact；以固定seed執行`sample_counts(8192)`取得sampled | exact是目前密度矩陣的確定機率；sampled是同一分布經有限次取樣後的觀測頻率 | 形成CSV、NumPy／Qiskit時間響應圖及四項主要觀測量 | 每分鐘輸出一次；sampled不回寫下一分鐘 |
+
+第一階段不能只理解成「把八個機率放入共同空間」。完整含義是：
+
+1. 每個語意狀態先有自己的初始權重$p_i$。
+2. $p_i$被轉成旋轉角$\theta_i$。
+3. `RYGate(θ_i)`把$\lvert0\rangle$旋轉成量測為1的機率等於$p_i$的量子位元。
+4. 八個量子位元以張量積形成256維聯合狀態空間。
+5. 後續局部旋轉、受控旋轉與耗散都更新同一個$256\times256$密度矩陣。
+
+因此，「共同狀態空間」指的是八個語意狀態的所有二元組合都被共同保存與演化，而非把八個彼此獨立的機率並排存放。
+
+## 5.3 Risk Failure Flow的五條線逐條代表什麼
+
+| 作用邊 | 每分鐘旋轉角 | 控制條件 | 目標狀態如何改變 | 工程語意 |
+|---|---:|---|---|---|
+| `q0 → q2` | $0.025\Delta t$ | `thermal_load_high = 1`分支 | 旋轉`backup_reserve_stressed` | 熱負載偏高使備援冷卻餘裕承受更大壓力 |
+| `q1 → q2` | $0.035\Delta t$ | `primary_cooling_degraded = 1`分支 | 旋轉`backup_reserve_stressed` | 主冷卻能力劣化直接消耗備援餘裕 |
+| `q2 → q3` | $0.018\Delta t$ | `backup_reserve_stressed = 1`分支 | 旋轉`power_constraint` | 備援設備投入、負載轉移或容量逼近使電力／EMS約束升高 |
+| `q2 → q4` | $0.032\Delta t$ | `backup_reserve_stressed = 1`分支 | 旋轉`process_thermal_risk` | 備援餘裕不足直接提高製程熱風險 |
+| `q3 → q4` | $0.025\Delta t$ | `power_constraint = 1`分支 | 旋轉`process_thermal_risk` | 電力限制阻礙冷卻資源增援，使製程風險進一步累積 |
+
+這五個閘不是一次同時「畫出關聯」而已。程式依表中順序連續執行：前一個閘更新後的DensityMatrix，會成為下一個閘的輸入。因此，`q0/q1 → q2 → q3/q4`在單一分鐘內已形成可傳遞的作用鏈。
+
+例如，圖中一條完整的風險路徑可以這樣讀：
 
 ```text
-控制狀態越顯化
-→ 目標狀態接受的旋轉作用越具影響
-→ 兩個狀態的聯合分布被改變
+q1 primary_cooling_degraded
+→ CRY(α12)提高q2 backup_reserve_stressed
+→ CRY(α24)提高q4 process_thermal_risk
 ```
 
-因此，Digital Topology中的邊在程式裡並非靜態連線。每一條邊都是會改變目標狀態分布的作用通道。
-
-受控旋轉可能在量子狀態中形成關聯，特定狀態下也可能形成糾纏；本POC對工程語意的最低主張是**條件式作用與聯合狀態改變**，沒有把每一條工程關係直接宣稱為物理量子糾纏。
-
-## 5.3 響應鏈的真正瓶頸
-
-`q5`代表異常已形成可理解意義，`q6`代表授權已形成，`q7`代表實體介入已執行。這三個節點刻意分開，因為：
+另一條跨系統路徑則是：
 
 ```text
-看見告警
-≠ 已經理解
-≠ 已取得授權
-≠ 已改變物理系統
+q1 primary_cooling_degraded
+→ q2 backup_reserve_stressed
+→ q3 power_constraint
+→ q4 process_thermal_risk
 ```
 
-Sensor-only的主要失效出現在`q5 → q6 → q7`。它可以累積很高的告警理解，介入機率依然接近零。
+## 5.4 Decision Response Flow的五條線逐條代表什麼
 
-## 5.4 介入後耗散是開放系統更新
+| 作用邊 | 旋轉強度 | 啟動條件 | 目標狀態如何改變 | 治理語意 |
+|---|---:|---|---|---|
+| `q1 → q5` | `alarm_gain` | $t\geq$ Detection | 旋轉`alarm_interpreted` | 冷卻劣化證據進入告警理解 |
+| `q2 → q5` | $0.85\times$`alarm_gain` | $t\geq$ Detection | 旋轉`alarm_interpreted` | 備援壓力提供第二組異常證據 |
+| `q3 → q5` | $0.65\times$`alarm_gain` | $t\geq$ Detection | 旋轉`alarm_interpreted` | 電力限制提供跨系統佐證 |
+| `q5 → q6` | `authorization_gain` | $t\geq$ Authorization | 旋轉`authorization_ready` | 已理解的告警開始穿過權限與治理節點 |
+| `q6 → q7` | `intervention_gain` | $t\geq$ Intervention | 旋轉`intervention_executed` | 已形成授權開始轉成實體操作或資源調度 |
 
-每分鐘演化完成響應鏈後，程式讀取目前密度矩陣中的：
+這條鏈刻意把`q5`、`q6`與`q7`分開，因為：
+
+```text
+資料已存在
+≠ 告警已被理解
+≠ 權限已經成立
+≠ 實體系統已被改變
+```
+
+圖中的橘色路徑應由左向右讀成：
+
+```text
+q1/q2/q3的異常證據
+→ q5 alarm_interpreted
+→ q6 authorization_ready
+→ q7 intervention_executed
+```
+
+Sensor-only與Accelerated-response的物理擾動及Risk Failure Flow完全相同；兩者差異集中在`q5 → q6 → q7`的啟動時間、旋轉強度與後續耗散能力。
+
+## 5.5 從一條完整閉環理解這張圖
+
+以「備援餘裕受壓」為例，圖中同一個`q2`同時參與兩股流：
+
+```text
+Risk Failure Flow
+q2 backup_reserve_stressed
+→ q3 power_constraint
+→ q4 process_thermal_risk
+```
+
+```text
+Decision Response Flow
+q2 backup_reserve_stressed
+→ q5 alarm_interpreted
+→ q6 authorization_ready
+→ q7 intervention_executed
+```
+
+當`q7`的邊際機率提高，程式再計算：
 
 ```math
-P(q_7=1)
+\Gamma_2(t)
+=
+\text{mitigation\_gain}\times P(q_7=1)
 ```
 
-並用它調整耗散參數：
+```math
+\Gamma_4(t)
+=
+1.40\times\text{mitigation\_gain}\times P(q_7=1)
+```
+
+並將兩個振幅耗散通道作用回`q2`與`q4`。因此，完整閉環是：
 
 ```text
-γ2(t) = mitigation_gain × P(q7=1)
-γ4(t) = 1.40 × mitigation_gain × P(q7=1)
+風險狀態形成
+→ 異常證據被理解
+→ 授權形成
+→ 實體介入形成
+→ 備援壓力與製程熱風險耗散
 ```
 
-接著對`q2`與`q4`施加Kraus振幅耗散通道。
+這裡需要精確區分兩種「控制」：
 
-這是一個**量子狀態演化加上經典回饋參數更新的混合機制**。耗散強度取決於當下狀態的邊際機率，因此目前實作屬於狀態相依的開放系統POC，尚未編譯為可直接部署至量子硬體的純固定電路。
+- 圖中的`CRYGate`是量子狀態內部的條件式作用。
+- 耗散強度由程式先讀取$P(q_7=1)$再建立Kraus通道，屬於古典回饋控制的混合機制。
 
-## 5.5 exact觀測與sampled觀測彼此分離
+所以目前POC是**量子密度矩陣演化與古典狀態回饋結合的開放系統實作**，並非一條可以原封不動送入量子硬體執行的固定純量子電路。
 
-Qiskit版本的後續DensityMatrix演化使用精確狀態。`sample_counts`只負責在每分鐘產生8192 shots的觀測頻率：
+## 5.6 exact與sampled到底差在哪裡
+
+Qiskit版本在每分鐘完成演化後，從同一個DensityMatrix分成兩條觀測路徑：
 
 ```text
-DensityMatrix exact state
-├─ 繼續進入下一分鐘演化
-└─ sample_counts → sampled CSV／sampled圖線
+DensityMatrix at minute t
+├─ exact：
+│  直接讀取矩陣對角線
+│  → 邊際機率與聯合機率
+│  → 保存為*_exact
+│
+└─ sampled：
+   以固定seed執行sample_counts(8192)
+   → 取得bitstring出現次數
+   → 換算觀測頻率
+   → 保存為*_sampled
 ```
 
-因此，有限shots波動不會被送回下一時間步，也不會把取樣噪聲累積成模型動態。
+四項觀測量的計算方式如下：
+
+| 觀測量 | exact計算 | sampled計算 | 解讀 |
+|---|---|---|---|
+| Physical Risk | 對所有$q_4=1$的對角元素求和 | 對所有$q_4=1$的bitstring次數求和再除以8192 | 製程熱風險本身的顯化機率 |
+| Decision Response | 對所有$q_7=1$的對角元素求和 | 對所有$q_7=1$的bitstring次數求和再除以8192 | 實體介入已形成的顯化機率 |
+| Uncontained Risk | 對所有$q_4=1,q_7=0$的對角元素求和 | 對符合$q_4=1,q_7=0$的bitstring次數求和再除以8192 | 風險已形成但介入尚未形成 |
+| Contained / Avoided | 對所有$q_4=0,q_7=1$的對角元素求和 | 對符合$q_4=0,q_7=1$的bitstring次數求和再除以8192 | 介入已形成且風險未顯化 |
+
+`sample_counts`不會取代或塌縮下一分鐘使用的DensityMatrix。本POC中的時間演化始終沿exact狀態繼續，sampled只模擬有限量測次數下的可觀測輸出。因此，Qiskit曲線上的鋸齒是觀測波動，不是系統狀態本身突然跳動。
 
 ---
 
@@ -554,12 +682,26 @@ Twin Information Flow
 
 ## 9.1 兩個實作的分工
 
-| 實作 | 技術 | 角色 |
-|---|---|---|
-| Pure NumPy | 手寫Density Matrix、`Ry`、controlled-`Ry`與Kraus通道 | 透明參考引擎；可逐步檢查索引、矩陣與每分鐘更新 |
-| Qiskit | `DensityMatrix`、`RYGate`、`CRYGate`、`Kraus`、`sample_counts` | 標準量子資訊框架實作；同時輸出exact與sampled觀測 |
+兩個版本使用相同的八個語意狀態、初始機率、時間函數、五條Risk Failure Flow、五條Decision Response Flow、耗散公式與觀測量。差異只在於數值構件由誰提供。
 
-這不是「經典模型對量子模型」的比較。NumPy版本同樣實作量子密度矩陣動態，只是未依賴Qiskit套件。
+| 實作 | 狀態容器 | 局部旋轉 | 條件式旋轉 | 耗散通道 | 觀測方式 | 主要角色 |
+|---|---|---|---|---|---|---|
+| Pure NumPy | `numpy.ndarray`保存$256\times256$複數密度矩陣 | `ry(θ)`建立$2\times2$矩陣，再由`apply_local_operator()`左、右乘密度矩陣 | `apply_controlled_operator()`在控制位元為1的索引子空間套用`ry(α)` | `amplitude_damping()`以$K_0$、$K_1$計算$\sum_kK_k\rho K_k^\dagger$ | 直接由密度矩陣對角線計算邊際機率、聯合機率與trace | 透明參考引擎；可逐步檢查位元索引、矩陣乘法、Kraus更新與每分鐘演化 |
+| Qiskit | `DensityMatrix`保存同一個八量子位元密度矩陣 | `RYGate(θ)`透過`DensityMatrix.evolve()`作用於指定`qargs` | `CRYGate(α)`透過`DensityMatrix.evolve()`作用於控制與目標`qargs` | `Kraus([K0,K1])`透過`DensityMatrix.evolve()`作用於指定量子位元 | 由DensityMatrix計算`*_exact`；由`sample_counts(8192)`計算`*_sampled` | 標準量子資訊框架實作；驗證NumPy矩陣結果並顯示有限shots觀測 |
+
+這不是「經典模型對量子模型」的比較。Pure NumPy版本同樣實作八量子位元密度矩陣、受控旋轉與開放系統耗散，只是把Qiskit提供的物件與運算明確寫成NumPy索引及矩陣操作。
+
+兩個版本的對應關係如下：
+
+| 數值功能 | Pure NumPy | Qiskit |
+|---|---|---|
+| 密度矩陣狀態 | `numpy.ndarray` | `DensityMatrix` |
+| 初始與局部Y軸旋轉 | `ry()`＋`apply_local_operator()` | `RYGate`＋`DensityMatrix.evolve()` |
+| 條件式Y軸旋轉 | `apply_controlled_operator(ry())` | `CRYGate`＋`DensityMatrix.evolve()` |
+| 振幅耗散 | `amplitude_damping()` | `Kraus`＋`DensityMatrix.evolve()` |
+| 精確觀測 | `diag(ρ)`後自行加總 | `density.data`對角線後加總 |
+| 有限shots觀測 | 未執行 | `DensityMatrix.sample_counts()` |
+| 圖表與CSV | Matplotlib＋`csv.DictWriter` | Matplotlib＋`csv.DictWriter` |
 
 ## 9.2 端到端資料流
 
